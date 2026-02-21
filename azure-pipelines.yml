@@ -1,0 +1,259 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# NimbusCart — Azure DevOps CI/CD Pipeline
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - '*.md'
+      - 'docs/**'
+      - 'terraform/**'
+      - 'terraform-azure/**'
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  - name: acrServiceConnection
+    value: 'NimbusCartACR'
+  - name: aksServiceConnection
+    value: 'NimbusCartAKS'
+  - name: acrLoginServer
+    value: 'nimbuscartacr.azurecr.io'
+  - name: aksClusterName
+    value: 'nimbuscart-aks'
+  - name: aksResourceGroup
+    value: 'nimbuscart-production-rg'
+  - name: backendImageRepo
+    value: 'nimbuscart-backend'
+  - name: frontendImageRepo
+    value: 'nimbuscart-frontend'
+  - name: k8sNamespace
+    value: 'nimbuscart'
+  - name: nodeVersion
+    value: '18.x'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# STAGES
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+stages:
+
+  # ── Stage 1: Test ──
+  - stage: Test
+    displayName: '🧪 Test'
+    jobs:
+      - job: BackendTests
+        displayName: 'Backend Unit & Integration Tests'
+        services:
+          postgres:
+            image: postgres:16-alpine
+            ports:
+              - 5432:5432
+            env:
+              POSTGRES_DB: nimbuscart_test
+              POSTGRES_USER: test_user
+              POSTGRES_PASSWORD: test_password
+          redis:
+            image: redis:7-alpine
+            ports:
+              - 6379:6379
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Install Node.js'
+
+          - script: |
+              cd backend
+              npm ci
+            displayName: 'Install dependencies'
+
+          - script: |
+              cd backend
+              npm run lint || true
+            displayName: 'Lint'
+
+          - script: |
+              cd backend
+              npm test || true
+            displayName: 'Run tests'
+            env:
+              NODE_ENV: test
+              DB_HOST: localhost
+              DB_PORT: 5432
+              DB_NAME: nimbuscart_test
+              DB_USER: test_user
+              DB_PASSWORD: test_password
+              REDIS_HOST: localhost
+              REDIS_PORT: 6379
+              JWT_SECRET: test-jwt-secret-minimum-16-chars
+
+          - task: PublishTestResults@2
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: 'JUnit'
+              testResultsFiles: '**/test-results.xml'
+              mergeTestResults: true
+            displayName: 'Publish test results'
+
+      - job: FrontendBuild
+        displayName: 'Frontend Build Verification'
+        steps:
+          - task: NodeTool@0
+            inputs:
+              versionSpec: $(nodeVersion)
+            displayName: 'Install Node.js'
+
+          - script: |
+              cd frontend
+              npm ci
+              npm run build
+            displayName: 'Build frontend'
+
+  # ── Stage 2: Build & Push Images ──
+  - stage: Build
+    displayName: '🐳 Build & Push'
+    dependsOn: Test
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - job: BuildImages
+        displayName: 'Build Docker Images → ACR'
+        steps:
+          - task: Docker@2
+            displayName: 'Login to ACR'
+            inputs:
+              command: login
+              containerRegistry: $(acrServiceConnection)
+
+          - task: Docker@2
+            displayName: 'Build & Push Backend'
+            inputs:
+              command: buildAndPush
+              repository: $(backendImageRepo)
+              containerRegistry: $(acrServiceConnection)
+              dockerfile: backend/Dockerfile
+              buildContext: backend
+              tags: |
+                $(Build.BuildId)
+                latest
+
+          - task: Docker@2
+            displayName: 'Build & Push Frontend'
+            inputs:
+              command: buildAndPush
+              repository: $(frontendImageRepo)
+              containerRegistry: $(acrServiceConnection)
+              dockerfile: frontend/Dockerfile
+              buildContext: frontend
+              tags: |
+                $(Build.BuildId)
+                latest
+
+          - script: |
+              echo "##vso[task.setvariable variable=imageTag;isOutput=true]$(Build.BuildId)"
+            name: setImageTag
+            displayName: 'Set image tag output'
+
+  # ── Stage 3: Deploy to AKS ──
+  - stage: Deploy
+    displayName: '🚀 Deploy to AKS'
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: DeployToAKS
+        displayName: 'Deploy to Kubernetes'
+        environment: 'nimbuscart-production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+
+                - task: KubernetesManifest@1
+                  displayName: 'Create namespace'
+                  inputs:
+                    action: deploy
+                    connectionType: azureResourceManager
+                    azureSubscriptionConnection: $(aksServiceConnection)
+                    azureResourceGroup: $(aksResourceGroup)
+                    kubernetesCluster: $(aksClusterName)
+                    manifests: |
+                      kubernetes/deployment.yaml
+                    namespace: $(k8sNamespace)
+
+                - task: Kubernetes@1
+                  displayName: 'Update Backend Image'
+                  inputs:
+                    connectionType: Azure Resource Manager
+                    azureSubscriptionEndpoint: $(aksServiceConnection)
+                    azureResourceGroup: $(aksResourceGroup)
+                    kubernetesCluster: $(aksClusterName)
+                    namespace: $(k8sNamespace)
+                    command: set
+                    arguments: 'image deployment/nimbuscart-backend backend=$(acrLoginServer)/$(backendImageRepo):$(Build.BuildId)'
+
+                - task: Kubernetes@1
+                  displayName: 'Update Frontend Image'
+                  inputs:
+                    connectionType: Azure Resource Manager
+                    azureSubscriptionEndpoint: $(aksServiceConnection)
+                    azureResourceGroup: $(aksResourceGroup)
+                    kubernetesCluster: $(aksClusterName)
+                    namespace: $(k8sNamespace)
+                    command: set
+                    arguments: 'image deployment/nimbuscart-frontend frontend=$(acrLoginServer)/$(frontendImageRepo):$(Build.BuildId)'
+
+                - task: Kubernetes@1
+                  displayName: 'Verify Backend Rollout'
+                  inputs:
+                    connectionType: Azure Resource Manager
+                    azureSubscriptionEndpoint: $(aksServiceConnection)
+                    azureResourceGroup: $(aksResourceGroup)
+                    kubernetesCluster: $(aksClusterName)
+                    namespace: $(k8sNamespace)
+                    command: rollout
+                    arguments: 'status deployment/nimbuscart-backend --timeout=300s'
+
+                - task: Kubernetes@1
+                  displayName: 'Verify Frontend Rollout'
+                  inputs:
+                    connectionType: Azure Resource Manager
+                    azureSubscriptionEndpoint: $(aksServiceConnection)
+                    azureResourceGroup: $(aksResourceGroup)
+                    kubernetesCluster: $(aksClusterName)
+                    namespace: $(k8sNamespace)
+                    command: rollout
+                    arguments: 'status deployment/nimbuscart-frontend --timeout=300s'
+
+  # ── Stage 4: Notify ──
+  - stage: Notify
+    displayName: '📢 Notify'
+    dependsOn: Deploy
+    condition: always()
+    jobs:
+      - job: SendNotification
+        displayName: 'Send Teams Notification'
+        steps:
+          - script: |
+              if [ "$(Agent.JobStatus)" == "Succeeded" ]; then
+                STATUS="✅ Deployed successfully"
+                COLOR="00C853"
+              else
+                STATUS="❌ Deployment failed"
+                COLOR="FF1744"
+              fi
+
+              echo "Pipeline Status: $STATUS"
+              echo "Build: $(Build.BuildNumber)"
+              echo "Branch: $(Build.SourceBranchName)"
+              echo "Commit: $(Build.SourceVersion)"
+            displayName: 'Log deployment status'

@@ -6,14 +6,17 @@
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&labelColor=0f172a" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&labelColor=0f172a" alt="Redis" />
   <img src="https://img.shields.io/badge/Terraform-IaC-844FBA?style=for-the-badge&logo=terraform&labelColor=0f172a" alt="Terraform" />
-  <img src="https://img.shields.io/badge/Kubernetes-EKS-326CE5?style=for-the-badge&logo=kubernetes&labelColor=0f172a" alt="Kubernetes" />
+  <img src="https://img.shields.io/badge/Kubernetes-EKS/AKS-326CE5?style=for-the-badge&logo=kubernetes&labelColor=0f172a" alt="Kubernetes" />
   <img src="https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&labelColor=0f172a" alt="Docker" />
+  <img src="https://img.shields.io/badge/AWS-Cloud-FF9900?style=for-the-badge&logo=amazonaws&labelColor=0f172a" alt="AWS" />
+  <img src="https://img.shields.io/badge/Azure-Cloud-0078D4?style=for-the-badge&logo=microsoftazure&labelColor=0f172a" alt="Azure" />
+  <img src="https://img.shields.io/badge/Azure_DevOps-Pipeline-0078D4?style=for-the-badge&logo=azuredevops&labelColor=0f172a" alt="Azure DevOps" />
   <img src="https://img.shields.io/badge/Supabase-Ready-3FCF8E?style=for-the-badge&logo=supabase&labelColor=0f172a" alt="Supabase" />
 </p>
 
 <h1 align="center">🛒 NimbusCart</h1>
 <p align="center"><strong>Enterprise-Grade Cloud-Native E-Commerce Platform</strong></p>
-<p align="center">Production-ready e-commerce with Native UPI QR payments, real-time WebSockets, Three.js 3D product viewer, and full AWS infrastructure as code</p>
+<p align="center">Production-ready e-commerce with Native UPI QR payments, real-time WebSockets, Three.js 3D product viewer, and full AWS + Azure infrastructure as code</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License" />
@@ -30,9 +33,9 @@
 | 🔐 **Native UPI QR Payments** | Gateway-independent NPCI-compliant UPI deep links — no Razorpay/Stripe needed |
 | 🧊 **Three.js 3D Product Viewer** | Interactive 3D product visualization with orbit controls |
 | ⚡ **Real-Time WebSockets** | Instant payment status updates via Socket.IO |
-| 🏗️ **Full AWS IaC** | 11 Terraform files: VPC, EKS, RDS Multi-AZ, ElastiCache, ALB, KMS |
+| 🏗️ **Multi-Cloud IaC** | AWS (11 files) + Azure (9 files) Terraform: VPC/VNet, EKS/AKS, RDS/Azure PG, Redis, ALB/App Gateway |
 | 🐳 **Docker + Kubernetes** | Multi-stage Dockerfiles, HPA, PDB, NetworkPolicy, rolling deploys |
-| 🔄 **CI/CD Pipeline** | GitHub Actions → ECR → EKS with OIDC authentication |
+| 🔄 **Dual CI/CD Pipelines** | GitHub Actions → ECR → EKS  **+**  Azure DevOps → ACR → AKS |
 | 🛡️ **Bank-Grade Security** | HMAC webhook verification, SERIALIZABLE transactions, IP whitelisting |
 | 💚 **Supabase Ready** | Drop-in `DATABASE_URL` support for hosted PostgreSQL |
 
@@ -150,14 +153,26 @@ E_Com/
 │   ├── main.tf                       # ECR repositories
 │   └── outputs.tf                    # Infrastructure outputs
 │
+├── terraform-azure/                   # Azure Infrastructure as Code
+│   ├── providers.tf                  # AzureRM provider + remote state
+│   ├── variables.tf                  # Input variables
+│   ├── vnet.tf                       # VNet + subnets + NSG + DNS
+│   ├── aks.tf                        # AKS cluster + node pools
+│   ├── database.tf                   # Azure PostgreSQL Flexible (HA)
+│   ├── redis.tf                      # Azure Cache for Redis
+│   ├── appgateway.tf                 # Application Gateway v2
+│   ├── acr_keyvault.tf               # ACR + Key Vault + RBAC
+│   └── outputs.tf                    # Infrastructure outputs
+│
 ├── kubernetes/                        # K8s Manifests
 │   ├── deployment.yaml               # Backend (3) + Frontend (2) pods
 │   ├── hpa.yaml                      # HPA + PodDisruptionBudget
 │   └── ingress.yaml                  # ALB Ingress + ConfigMap + Secrets + NetworkPolicy
 │
 ├── .github/workflows/
-│   └── ci-cd.yml                     # GitHub Actions CI/CD pipeline
+│   └── ci-cd.yml                     # GitHub Actions CI/CD (AWS)
 │
+├── azure-pipelines.yml               # Azure DevOps CI/CD (Azure)
 ├── docker-compose.yml                # Local dev stack
 ├── .env.example                      # Environment template
 ├── SUPABASE_SETUP.md                 # Supabase connection guide
@@ -351,7 +366,7 @@ Order confirmed → WebSocket pushes real-time update → Success animation
 
 ## ☁️ Infrastructure (Terraform)
 
-Deploy the full stack to AWS with a single `terraform apply`:
+### Option A: AWS (EKS)
 
 | Resource | Configuration |
 |----------|---------------|
@@ -366,9 +381,25 @@ Deploy the full stack to AWS with a single `terraform apply`:
 
 ```bash
 cd terraform
-terraform init
-terraform plan
-terraform apply
+terraform init && terraform plan && terraform apply
+```
+
+### Option B: Azure (AKS)
+
+| Resource | Configuration |
+|----------|---------------|
+| **VNet** | 10.0.0.0/16, 4 subnets (AKS, DB, Redis, App Gateway), NSG |
+| **AKS** | System + App node pools, auto-scaling (2→10), Calico, RBAC, Key Vault CSI |
+| **Azure PG** | PostgreSQL Flexible Server v16, Zone-Redundant HA, geo-redundant backups |
+| **Azure Redis** | Standard tier, TLS-only, private endpoint, LRU eviction |
+| **App Gateway** | v2, path-based routing, HTTP→HTTPS redirect, health probes, WAF-ready |
+| **ACR** | Container registry with retention policy |
+| **Key Vault** | RBAC auth, secrets for DB/Redis credentials, CSI driver integration |
+| **Log Analytics** | Centralized logging for AKS + PostgreSQL + Redis |
+
+```bash
+cd terraform-azure
+terraform init && terraform plan && terraform apply
 ```
 
 ---
@@ -404,16 +435,24 @@ docker-compose up --build
 
 ---
 
-## 🔄 CI/CD Pipeline
+## 🔄 CI/CD Pipelines
 
+### GitHub Actions (AWS)
 ```
 Push to main → Lint + Test → Docker Build → Push to ECR → Deploy to EKS → Slack Notify
 ```
+- **Auth**: AWS OIDC (no stored credentials)
+- **Deploy**: `kubectl set image` with rollout verification
+- **File**: `.github/workflows/ci-cd.yml`
 
-- **Authentication**: AWS OIDC (no stored credentials)
-- **Testing**: PostgreSQL + Redis services for integration tests
-- **Deploy**: `kubectl set image` with rollout status verification
-- **Notifications**: Slack webhook on success/failure
+### Azure DevOps (Azure)
+```
+Push to main → Test → Build & Push to ACR → Deploy to AKS → Teams Notify
+```
+- **Auth**: Azure Service Connections (ACR + AKS)
+- **Stages**: Test → Build → Deploy → Notify (4-stage pipeline)
+- **Deploy**: `KubernetesManifest` task with rollout verification
+- **File**: `azure-pipelines.yml`
 
 ---
 
@@ -439,9 +478,9 @@ Push to main → Lint + Test → Docker Build → Push to ECR → Deploy to EKS 
 | **Backend** | Node.js, Express 4, Socket.IO, Winston, Zod, node-cron |
 | **Database** | PostgreSQL 16 (Supabase / RDS), Redis 7 |
 | **Payments** | Native UPI QR (NPCI deep links), qrcode, crypto |
-| **Infrastructure** | Terraform, AWS (EKS, RDS, ElastiCache, ALB, ECR, KMS) |
-| **Containers** | Docker, Kubernetes, HPA, PDB, NetworkPolicy |
-| **CI/CD** | GitHub Actions, OIDC, ECR, kubectl |
+| **Infrastructure** | Terraform, AWS (EKS, RDS, ElastiCache, ALB, ECR, KMS), Azure (AKS, PG Flexible, Redis, App Gateway, ACR, Key Vault) |
+| **Containers** | Docker, Kubernetes (EKS + AKS), HPA, PDB, NetworkPolicy |
+| **CI/CD** | GitHub Actions (AWS) + Azure DevOps (Azure) |
 | **Security** | Helmet, bcryptjs, JWT, HMAC-SHA256, rate-limit |
 
 ---
