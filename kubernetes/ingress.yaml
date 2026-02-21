@@ -1,0 +1,108 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ALB Ingress
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nimbuscart-ingress
+  namespace: payment-ecom
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/group.name: nimbuscart
+spec:
+  rules:
+    - host: nimbuscart.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: nimbuscart-backend
+                port:
+                  number: 3000
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: nimbuscart-backend
+                port:
+                  number: 3000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nimbuscart-frontend
+                port:
+                  number: 80
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# ConfigMap
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nimbuscart-config
+  namespace: payment-ecom
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  FRONTEND_URL: "https://nimbuscart.example.com"
+  LOG_LEVEL: "info"
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Secrets (placeholder — use external-secrets or sealed-secrets in production)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nimbuscart-secrets
+  namespace: payment-ecom
+type: Opaque
+stringData:
+  DB_HOST: "REPLACE_WITH_RDS_ENDPOINT"
+  DB_PORT: "5432"
+  DB_NAME: "nimbuscart"
+  DB_USER: "nimbuscart_admin"
+  DB_PASSWORD: "REPLACE_WITH_SECURE_PASSWORD"
+  REDIS_URL: "rediss://REPLACE_WITH_REDIS_ENDPOINT:6379"
+  JWT_SECRET: "REPLACE_WITH_SECURE_JWT_SECRET"
+  JWT_REFRESH_SECRET: "REPLACE_WITH_SECURE_REFRESH_SECRET"
+  UPI_MERCHANT_VPA: "merchant@upi"
+  UPI_MERCHANT_NAME: "NimbusCart"
+  BANK_WEBHOOK_SECRET: "REPLACE_WITH_BANK_WEBHOOK_SECRET"
+  BANK_WEBHOOK_ALLOWED_IPS: ""
+---
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# NetworkPolicy — Backend
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: nimbuscart-backend-netpol
+  namespace: payment-ecom
+spec:
+  podSelector:
+    matchLabels:
+      app: nimbuscart-backend
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: nimbuscart-frontend
+      ports:
+        - port: 3000
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - port: 3000
+  egress:
+    - {}

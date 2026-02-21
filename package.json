@@ -1,0 +1,27 @@
+{
+    "name": "nimbuscart",
+    "version": "1.0.0",
+    "description": "Enterprise cloud-native e-commerce platform with dynamic UPI QR payment",
+    "private": true,
+    "scripts": {
+        "dev:backend": "cd backend && npm run dev",
+        "dev:frontend": "cd frontend && npm run dev",
+        "install:all": "cd backend && npm install && cd ../frontend && npm install",
+        "build:frontend": "cd frontend && npm run build",
+        "test:backend": "cd backend && npm test",
+        "docker:up": "docker-compose up --build",
+        "docker:down": "docker-compose down",
+        "tf:init": "cd terraform && terraform init",
+        "tf:plan": "cd terraform && terraform plan",
+        "tf:apply": "cd terraform && terraform apply"
+    },
+    "keywords": [
+        "ecommerce",
+        "upi",
+        "qr-payment",
+        "kubernetes",
+        "terraform"
+    ],
+    "author": "NimbusCart Team",
+    "license": "MIT"
+}

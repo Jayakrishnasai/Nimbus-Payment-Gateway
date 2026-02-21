@@ -1,0 +1,94 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: nimbuscart-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nimbuscart
+      POSTGRES_USER: nimbuscart_user
+      POSTGRES_PASSWORD: nimbuscart_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U nimbuscart_user -d nimbuscart" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    container_name: nimbuscart-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API ──
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nimbuscart-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      # Supabase: set DATABASE_URL to your Supabase connection string to use hosted DB
+      # DATABASE_URL: postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: nimbuscart
+      DB_USER: nimbuscart_user
+      DB_PASSWORD: nimbuscart_pass
+      DB_SSL: "false"
+      DB_POOL_MIN: "2"
+      DB_POOL_MAX: "10"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      JWT_SECRET: dev_jwt_secret_change_in_production_32chars
+      JWT_EXPIRES_IN: 7d
+      UPI_MERCHANT_VPA: merchant@upi
+      UPI_MERCHANT_NAME: NimbusCart
+      BANK_WEBHOOK_SECRET: dev-webhook-secret
+      BANK_WEBHOOK_ALLOWED_IPS: ""
+      PAYMENT_TIMEOUT_SECONDS: "300"
+      LOG_LEVEL: info
+      FRONTEND_URL: http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Frontend ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nimbuscart-ui
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  redisdata:
