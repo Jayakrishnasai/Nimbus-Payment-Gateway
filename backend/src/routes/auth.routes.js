@@ -2,11 +2,23 @@
 
 const { Router } = require('express');
 const { z } = require('zod');
+const crypto = require('node:crypto');
 const AuthService = require('../services/auth.service');
 const { authenticate } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 
 const router = Router();
+
+// GET /api/auth/csrf-token
+router.get('/csrf-token', (req, res) => {
+    const token = crypto.randomBytes(32).toString('hex');
+    res.cookie('XSRF-TOKEN', token, {
+        httpOnly: false, // Required for Axios to read it
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+    });
+    res.json({ token });
+});
 
 // ── Validation Schemas ──
 const registerSchema = z.object({

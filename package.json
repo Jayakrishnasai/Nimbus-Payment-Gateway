@@ -23,5 +23,8 @@
         "terraform"
     ],
     "author": "NimbusCart Team",
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "stripe": "^20.4.1"
+    }
 }

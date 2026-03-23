@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { cartAPI } from '../services/api';
 import { useAuth } from './AuthContext';
 import toast from 'react-hot-toast';
@@ -67,16 +68,25 @@ export function CartProvider({ children }) {
             const res = await cartAPI.clear();
             setCart(res.data);
         } catch (err) {
+            console.error('Failed to clear cart:', err);
             toast.error('Failed to clear cart');
         }
     };
 
+    const value = useMemo(() => ({
+        cart, loading, addItem, updateItem, removeItem, clearCart, fetchCart
+    }), [cart, loading, fetchCart]);
+
     return (
-        <CartContext.Provider value={{ cart, loading, addItem, updateItem, removeItem, clearCart, fetchCart }}>
+        <CartContext.Provider value={value}>
             {children}
         </CartContext.Provider>
     );
 }
+
+CartProvider.propTypes = {
+    children: PropTypes.node.isRequired,
+};
 
 export const useCart = () => {
     const ctx = useContext(CartContext);

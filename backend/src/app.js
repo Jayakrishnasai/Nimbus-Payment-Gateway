@@ -1,3 +1,4 @@
+/* cspell:ignore hsts nimbuscart */
 'use strict';
 
 const express = require('express');
@@ -16,11 +17,19 @@ const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/order.routes');
 const paymentRoutes = require('./routes/payment.routes');
 const webhookRoutes = require('./routes/webhook.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 // ── Error handler ──
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
+const { csrfProtection } = require('./middleware/csrf');
+const { trackMetrics } = require('./middleware/metrics.middleware');
 
 const app = express();
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MONITORING & METRICS (EARLY)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.use(trackMetrics);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SECURITY MIDDLEWARE
@@ -44,7 +53,7 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-XSRF-TOKEN'],
 }));
 
 // ── Global rate limiter: 100 req / min / IP ──
@@ -65,6 +74,7 @@ app.use('/api/webhooks', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+app.use(csrfProtection);
 app.use(compression());
 
 // ── HTTP request logging ──
@@ -74,8 +84,17 @@ app.use(morgan(morganFormat, {
 }));
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// HEALTH CHECK
+// HEALTH & ROOT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+app.get('/', (req, res) => {
+    res.status(200).json({
+        name: 'NimbusCart API',
+        version: '1.0.0',
+        message: 'Welcome to the NimbusCart API. For frontend, visit http://localhost:5173',
+        health: '/health'
+    });
+});
+
 app.get('/health', (req, res) => {
     res.status(200).json({
         status: 'healthy',
@@ -94,6 +113,7 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ERROR HANDLING

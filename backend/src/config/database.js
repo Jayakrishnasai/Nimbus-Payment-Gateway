@@ -1,3 +1,4 @@
+/* cspell:ignore Supabase Millis pooler nimbuscart */
 'use strict';
 
 const { Pool } = require('pg');
@@ -13,8 +14,8 @@ function buildPoolConfig() {
         const isSupabase = databaseUrl.includes('supabase');
         return {
             connectionString: databaseUrl,
-            min: parseInt(process.env.DB_POOL_MIN, 10) || 2,
-            max: parseInt(process.env.DB_POOL_MAX, 10) || 10,
+            min: Number.parseInt(process.env.DB_POOL_MIN, 10) || 2,
+            max: Number.parseInt(process.env.DB_POOL_MAX, 10) || 10,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 10000,
             ssl: { rejectUnauthorized: false }, // Required for Supabase & most hosted PG
@@ -29,12 +30,12 @@ function buildPoolConfig() {
     // Local / Docker PostgreSQL via individual env vars
     return {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT, 10) || 5432,
+        port: Number.parseInt(process.env.DB_PORT, 10) || 5432,
         database: process.env.DB_NAME || 'nimbuscart',
         user: process.env.DB_USER || 'nimbuscart_user',
         password: process.env.DB_PASSWORD || '',
-        min: parseInt(process.env.DB_POOL_MIN, 10) || 2,
-        max: parseInt(process.env.DB_POOL_MAX, 10) || 20,
+        min: Number.parseInt(process.env.DB_POOL_MIN, 10) || 2,
+        max: Number.parseInt(process.env.DB_POOL_MAX, 10) || 20,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
         ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,

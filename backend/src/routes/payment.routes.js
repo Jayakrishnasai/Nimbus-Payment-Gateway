@@ -6,18 +6,18 @@ const { authenticate } = require('../middleware/auth');
 
 const router = Router();
 
-// POST /api/payments/:orderId — Create UPI payment & get QR
+// POST /api/payments/:orderId — Create Stripe Checkout Session
 router.post('/:orderId', authenticate, async (req, res, next) => {
     try {
-        const payment = await PaymentService.createPayment(req.params.orderId, req.user.id);
-        res.status(201).json(payment);
+        const session = await PaymentService.createPayment(req.params.orderId, req.user.id);
+        res.status(201).json(session); // Returns { url: session.url }
     } catch (error) {
         next(error);
     }
 });
 
-// GET /api/payments/:orderId/status — Check payment status
-router.get('/:orderId/status', authenticate, async (req, res, next) => {
+// GET /api/payments/:orderId/verify — Verify payment status after redirect
+router.get('/:orderId/verify', authenticate, async (req, res, next) => {
     try {
         const status = await PaymentService.getPaymentStatus(req.params.orderId, req.user.id);
         res.json(status);
@@ -26,12 +26,11 @@ router.get('/:orderId/status', authenticate, async (req, res, next) => {
     }
 });
 
-// POST /api/payments/:orderId/confirm — Manual "I Have Paid" confirmation
-router.post('/:orderId/confirm', authenticate, async (req, res, next) => {
+// POST /api/payments/:orderId/retry — Retry a failed/expired payment
+router.post('/:orderId/retry', authenticate, async (req, res, next) => {
     try {
-        const { utrNumber } = req.body;
-        const result = await PaymentService.confirmManual(req.params.orderId, req.user.id, utrNumber);
-        res.json(result);
+        const session = await PaymentService.retryPayment(req.params.orderId, req.user.id);
+        res.status(201).json(session);
     } catch (error) {
         next(error);
     }

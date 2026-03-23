@@ -26,7 +26,9 @@ export default function ProductCard({ product, index = 0 }) {
         <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: index * 0.1 }}
+            whileHover={{ y: -6, scale: 1.02 }}
+            transition={{ duration: 0.4, delay: index * 0.1, type: 'spring', stiffness: 250, damping: 25 }}
+            className="h-full"
         >
             <Link to={`/products/${product.slug || product.id}`} className="block group">
                 <div className="glass-card overflow-hidden">

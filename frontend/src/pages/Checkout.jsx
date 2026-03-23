@@ -3,8 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { MapPin, CreditCard, Lock } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { orderAPI } from '../services/api';
+import { orderAPI, paymentAPI } from '../services/api';
 import toast from 'react-hot-toast';
+
+const Input = ({ label, value, onChange, disabled, required, placeholder, span2 }) => (
+    <div className={span2 ? 'sm:col-span-2' : ''}>
+        <label className="block text-sm text-surface-200/70 mb-1.5">{label}{required && ' *'}</label>
+        <input type="text" required={required} value={value}
+            onChange={onChange}
+            disabled={disabled}
+            className="w-full px-4 py-3 rounded-xl bg-surface-800/50 border border-surface-700 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-white disabled:opacity-50"
+            placeholder={placeholder} />
+    </div>
+);
 
 export default function Checkout() {
     const { cart } = useCart();
@@ -23,25 +34,15 @@ export default function Checkout() {
         }
         setLoading(true);
         try {
-            const res = await orderAPI.create({ shippingAddress: address, billingAddress: address, idempotencyKey: `ck-${Date.now()}` });
-            toast.success('Order created!');
-            navigate(`/payment/${res.data.id}`);
+            const orderRes = await orderAPI.create({ shippingAddress: address, billingAddress: address, idempotencyKey: `ck-${Date.now()}` });
+            const paymentRes = await paymentAPI.create(orderRes.data.id);
+            window.location.href = paymentRes.data.url;
         } catch (err) {
             toast.error(err.response?.data?.error || 'Failed to create order');
         } finally { setLoading(false); }
     };
 
     if (cart.items.length === 0) { navigate('/cart'); return null; }
-
-    const Input = ({ label, field, required, placeholder, span2 }) => (
-        <div className={span2 ? 'sm:col-span-2' : ''}>
-            <label className="block text-sm text-surface-200/70 mb-1.5">{label}{required && ' *'}</label>
-            <input type="text" required={required} value={address[field]}
-                onChange={e => setAddress(a => ({ ...a, [field]: e.target.value }))}
-                className="w-full px-4 py-3 rounded-xl bg-surface-800/50 border border-surface-700 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-white"
-                placeholder={placeholder} />
-        </div>
-    );
 
     return (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -59,12 +60,12 @@ export default function Checkout() {
                                 <h2 className="text-xl font-display font-semibold">Shipping Address</h2>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Input label="Full Name" field="name" required placeholder="John Doe" span2 />
-                                <Input label="Address Line 1" field="line1" required placeholder="123 Main St" span2 />
-                                <Input label="Address Line 2" field="line2" placeholder="Apt 4B" span2 />
-                                <Input label="City" field="city" required placeholder="Mumbai" />
-                                <Input label="State" field="state" required placeholder="Maharashtra" />
-                                <Input label="Postal Code" field="postalCode" required placeholder="400001" />
+                                <Input label="Full Name" value={address.name} onChange={e => setAddress(a => ({ ...a, name: e.target.value }))} disabled={loading} required placeholder="John Doe" span2 />
+                                <Input label="Address Line 1" value={address.line1} onChange={e => setAddress(a => ({ ...a, line1: e.target.value }))} disabled={loading} required placeholder="123 Main St" span2 />
+                                <Input label="Address Line 2" value={address.line2} onChange={e => setAddress(a => ({ ...a, line2: e.target.value }))} disabled={loading} placeholder="Apt 4B" span2 />
+                                <Input label="City" value={address.city} onChange={e => setAddress(a => ({ ...a, city: e.target.value }))} disabled={loading} required placeholder="Mumbai" />
+                                <Input label="State" value={address.state} onChange={e => setAddress(a => ({ ...a, state: e.target.value }))} disabled={loading} required placeholder="Maharashtra" />
+                                <Input label="Postal Code" value={address.postalCode} onChange={e => setAddress(a => ({ ...a, postalCode: e.target.value }))} disabled={loading} required placeholder="400001" />
                             </div>
                         </div>
                     </motion.div>

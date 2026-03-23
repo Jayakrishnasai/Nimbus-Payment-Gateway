@@ -10,7 +10,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE users (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email       VARCHAR(255) NOT NULL UNIQUE,
-    password    VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     first_name  VARCHAR(100) NOT NULL,
     last_name   VARCHAR(100) NOT NULL,
     phone       VARCHAR(20),
@@ -110,16 +110,14 @@ CREATE TABLE payments (
     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id                UUID NOT NULL REFERENCES orders(id),
     user_id                 UUID REFERENCES users(id),
-    upi_transaction_ref     VARCHAR(100),
-    utr_number              VARCHAR(100),
-    upi_deep_link           TEXT,
+    stripe_session_id       VARCHAR(255),
+    stripe_payment_intent_id VARCHAR(255),
     amount                  DECIMAL(12,2) NOT NULL,
     currency                VARCHAR(3) DEFAULT 'INR',
-    method                  VARCHAR(50) DEFAULT 'upi',
+    method                  VARCHAR(50) DEFAULT 'stripe',
     status                  VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending','captured','failed','expired','refunded')),
     reconciliation_status   VARCHAR(30) DEFAULT NULL
                             CHECK (reconciliation_status IS NULL OR reconciliation_status IN ('awaiting','matched','unmatched','rejected')),
-    qr_code_url             TEXT,
     idempotency_key         VARCHAR(255) UNIQUE,
     error_code              VARCHAR(100),
     error_description       TEXT,
@@ -130,29 +128,26 @@ CREATE TABLE payments (
 );
 
 CREATE INDEX idx_payments_order ON payments(order_id);
-CREATE INDEX idx_payments_upi_ref ON payments(upi_transaction_ref);
-CREATE INDEX idx_payments_utr ON payments(utr_number);
+CREATE INDEX idx_payments_stripe_session ON payments(stripe_session_id);
+CREATE INDEX idx_payments_stripe_pi ON payments(stripe_payment_intent_id);
 CREATE INDEX idx_payments_status ON payments(status);
 CREATE INDEX idx_payments_idempotency ON payments(idempotency_key);
 
--- ── Bank Transactions (UPI reconciliation) ──
-CREATE TABLE bank_transactions (
+-- ── Stripe Webhook Logs ──
+CREATE TABLE stripe_webhook_logs (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    utr                 VARCHAR(100) NOT NULL UNIQUE,
-    amount              DECIMAL(12,2) NOT NULL,
-    sender_vpa          VARCHAR(255),
-    transaction_ref     VARCHAR(100),
+    stripe_event_id     VARCHAR(255) NOT NULL UNIQUE,
+    event_type          VARCHAR(255) NOT NULL,
     matched_order_id    UUID REFERENCES orders(id),
     status              VARCHAR(30) NOT NULL DEFAULT 'unmatched'
-                        CHECK (status IN ('matched','unmatched','amount_mismatch','late_payment','duplicate')),
+                        CHECK (status IN ('matched','unmatched','amount_mismatch','ignored')),
     raw_payload         JSONB DEFAULT '{}'::jsonb,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_bank_txn_utr ON bank_transactions(utr);
-CREATE INDEX idx_bank_txn_ref ON bank_transactions(transaction_ref);
-CREATE INDEX idx_bank_txn_order ON bank_transactions(matched_order_id);
-CREATE INDEX idx_bank_txn_status ON bank_transactions(status);
+CREATE INDEX idx_stripe_logs_event_id ON stripe_webhook_logs(stripe_event_id);
+CREATE INDEX idx_stripe_logs_order ON stripe_webhook_logs(matched_order_id);
+CREATE INDEX idx_stripe_logs_status ON stripe_webhook_logs(status);
 
 -- ── Payment Logs ──
 CREATE TABLE payment_logs (

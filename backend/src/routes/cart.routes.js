@@ -5,6 +5,7 @@ const { z } = require('zod');
 const CartService = require('../services/cart.service');
 const { authenticate } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const { trackEvent } = require('../middleware/metrics.middleware');
 
 const router = Router();
 router.use(authenticate);
@@ -32,6 +33,16 @@ router.get('/', async (req, res, next) => {
 router.post('/items', validate({ body: addItemSchema }), async (req, res, next) => {
     try {
         const cart = await CartService.addItem(req.user.id, req.body.productId, req.body.quantity);
+        
+        // track event
+        trackEvent({
+            eventType: 'CART_ADD',
+            entityId: req.body.productId,
+            entityType: 'product',
+            metadata: { quantity: req.body.quantity },
+            req
+        });
+
         res.status(201).json(cart);
     } catch (error) {
         next(error);

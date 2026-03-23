@@ -1,3 +1,4 @@
+// cspell:ignore Supabase nimbuscart
 'use strict';
 
 const { z } = require('zod');
@@ -28,11 +29,10 @@ const envSchema = z.object({
     JWT_SECRET: z.string().min(16),
     JWT_EXPIRES_IN: z.string().default('7d'),
 
-    // UPI Payment
-    UPI_MERCHANT_VPA: z.string().default('merchant@upi'),
-    UPI_MERCHANT_NAME: z.string().default('NimbusCart'),
-    BANK_WEBHOOK_SECRET: z.string().default('dev-webhook-secret'),
-    BANK_WEBHOOK_ALLOWED_IPS: z.string().optional(),
+    // Stripe Payment
+    STRIPE_PUBLISHABLE_KEY: z.string(),
+    STRIPE_SECRET_KEY: z.string(),
+    STRIPE_WEBHOOK_SECRET: z.string(),
 
     // Payment
     PAYMENT_TIMEOUT_SECONDS: z.coerce.number().default(300),

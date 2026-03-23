@@ -1,20 +1,14 @@
 'use strict';
 
 const { query } = require('../config/database');
-const redis = require('../config/redis');
+const Decimal = require('decimal.js');
 const logger = require('../utils/logger');
-
-const CART_TTL = 86400; // 24 hours
 
 class CartService {
     /**
-     * Get user's cart from Redis (with DB fallback).
+     * Get cart for a user.
      */
     static async getCart(userId) {
-        // Try Redis cache
-        const cached = await redis.get(`cart:${userId}`);
-        if (cached) return JSON.parse(cached);
-
         // Fallback to DB
         const result = await query(
             `SELECT ci.id, ci.product_id, ci.quantity,
@@ -34,17 +28,16 @@ class CartService {
                 productId: row.product_id,
                 name: row.name,
                 slug: row.slug,
-                price: parseFloat(row.price),
+                price: Number.parseFloat(row.price),
                 imageUrl: row.image_url,
                 quantity: row.quantity,
                 stock: row.stock,
-                subtotal: parseFloat(row.price) * row.quantity,
+                subtotal: new Decimal(row.price).times(row.quantity).toNumber(),
             })),
-            total: result.rows.reduce((sum, r) => sum + parseFloat(r.price) * r.quantity, 0),
+            total: result.rows.reduce((sum, r) => sum.plus(new Decimal(r.price).times(r.quantity)), new Decimal(0)).toNumber(),
             itemCount: result.rows.reduce((sum, r) => sum + r.quantity, 0),
         };
 
-        await redis.setex(`cart:${userId}`, CART_TTL, JSON.stringify(cart));
         return cart;
     }
 
@@ -83,7 +76,6 @@ class CartService {
         );
 
         // Invalidate cache
-        await redis.del(`cart:${userId}`);
         logger.info('Cart item added', { userId, productId, quantity });
 
         return CartService.getCart(userId);
@@ -103,7 +95,6 @@ class CartService {
             [userId, productId, quantity]
         );
 
-        await redis.del(`cart:${userId}`);
         return CartService.getCart(userId);
     }
 
@@ -116,7 +107,6 @@ class CartService {
             [userId, productId]
         );
 
-        await redis.del(`cart:${userId}`);
         return CartService.getCart(userId);
     }
 
@@ -125,7 +115,6 @@ class CartService {
      */
     static async clearCart(userId) {
         await query('DELETE FROM cart_items WHERE user_id = $1', [userId]);
-        await redis.del(`cart:${userId}`);
         return { items: [], total: 0, itemCount: 0 };
     }
 }

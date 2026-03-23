@@ -2,6 +2,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 const { query, getClient } = require('../config/database');
+const Decimal = require('decimal.js');
 const CartService = require('./cart.service');
 const logger = require('../utils/logger');
 
@@ -25,8 +26,8 @@ class OrderService {
 
         try {
             await client.query('BEGIN');
-            // Use SERIALIZABLE for payment-related transactions
-            await client.query('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+            // Use READ COMMITTED to avoid spurious serialization failures; explicitly locking via FOR UPDATE where necessary
+            await client.query('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
 
             // Get cart items
             const cartResult = await client.query(
@@ -52,11 +53,11 @@ class OrderService {
                 }
             }
 
-            // Calculate totals
-            const subtotal = cartResult.rows.reduce((sum, r) => sum + parseFloat(r.price) * r.quantity, 0);
-            const tax = Math.round(subtotal * 0.18 * 100) / 100; // 18% GST
-            const shippingCost = subtotal >= 999 ? 0 : 99;
-            const total = Math.round((subtotal + tax + shippingCost) * 100) / 100;
+            // Calculate totals using exact precision math
+            const subtotal = cartResult.rows.reduce((sum, r) => sum.plus(new Decimal(r.price).times(r.quantity)), new Decimal(0));
+            const tax = subtotal.times(0.18).toDecimalPlaces(2, Decimal.ROUND_HALF_UP); // 18% GST
+            const shippingCost = new Decimal(subtotal.gte(999) ? 0 : 99);
+            const total = subtotal.plus(tax).plus(shippingCost).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
             const orderNumber = `NC-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
@@ -66,7 +67,7 @@ class OrderService {
                              shipping_address, billing_address, notes, idempotency_key, expires_at)
          VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, NOW() + INTERVAL '5 minutes')
          RETURNING id, order_number, status, subtotal, tax, shipping_cost, total, created_at`,
-                [userId, orderNumber, subtotal, tax, shippingCost, total,
+                [userId, orderNumber, subtotal.toNumber(), tax.toNumber(), shippingCost.toNumber(), total.toNumber(),
                     JSON.stringify(shippingAddress || {}), JSON.stringify(billingAddress || {}),
                     notes || null, idempotencyKey || null]
             );
@@ -79,7 +80,7 @@ class OrderService {
                     `INSERT INTO order_items (order_id, product_id, product_name, product_image, quantity, unit_price, total_price)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [order.id, item.product_id, item.name, item.image_url, item.quantity,
-                    item.price, parseFloat(item.price) * item.quantity]
+                    item.price, new Decimal(item.price).times(item.quantity).toNumber()]
                 );
 
                 // Reserve inventory
@@ -95,11 +96,7 @@ class OrderService {
 
             await client.query('COMMIT');
 
-            // Clear cart cache
-            const redis = require('../config/redis');
-            await redis.del(`cart:${userId}`);
-
-            logger.info('Order created', { orderId: order.id, orderNumber, total, userId });
+            logger.info('Order created', { orderId: order.id, orderNumber, total: total.toNumber(), userId });
 
             return order;
         } catch (error) {
@@ -132,8 +129,8 @@ class OrderService {
             orders: result.rows,
             pagination: {
                 page, limit,
-                total: parseInt(countResult.rows[0].count, 10),
-                totalPages: Math.ceil(parseInt(countResult.rows[0].count, 10) / limit),
+                total: Number.parseInt(countResult.rows[0].count, 10),
+                totalPages: Math.ceil(Number.parseInt(countResult.rows[0].count, 10) / limit),
             },
         };
     }
@@ -171,17 +168,128 @@ class OrderService {
     /**
      * Update order status.
      */
-    static async updateStatus(orderId, status) {
-        const result = await query(
-            `UPDATE orders SET status = $2 WHERE id = $1 RETURNING *`,
-            [orderId, status]
-        );
+    static async updateStatus(orderId, newStatus, userId = null, userRole = null) {
+        // Validate status transition
+        const VALID_TRANSITIONS = {
+            pending: ['confirmed', 'cancelled'],
+            confirmed: ['processing', 'cancelled'],
+            processing: ['shipped', 'cancelled'],
+            shipped: ['delivered'],
+            delivered: ['refunded'],
+            cancelled: [],
+            refunded: [],
+        };
 
-        if (result.rows.length === 0) {
+        const orderResult = await query('SELECT * FROM orders WHERE id = $1', [orderId]);
+        if (orderResult.rows.length === 0) {
             throw Object.assign(new Error('Order not found'), { statusCode: 404 });
         }
 
+        const order = orderResult.rows[0];
+        const currentStatus = order.status;
+
+        if (!VALID_TRANSITIONS[currentStatus]?.includes(newStatus)) {
+            throw Object.assign(
+                new Error(`Cannot transition from '${currentStatus}' to '${newStatus}'`),
+                { statusCode: 400 }
+            );
+        }
+
+        // Vendors can only update orders that contain their products
+        if (userRole === 'vendor' && userId) {
+            const vendorCheck = await query(
+                `SELECT 1 FROM order_items oi
+                 JOIN products p ON p.id = oi.product_id
+                 WHERE oi.order_id = $1 AND p.vendor_id = $2 LIMIT 1`,
+                [orderId, userId]
+            );
+            if (vendorCheck.rows.length === 0) {
+                throw Object.assign(new Error('You do not have access to this order'), { statusCode: 403 });
+            }
+        }
+
+        const result = await query(
+            `UPDATE orders SET status = $2 WHERE id = $1 RETURNING *`,
+            [orderId, newStatus]
+        );
+
+        logger.info('Order status updated', { orderId, from: currentStatus, to: newStatus });
         return result.rows[0];
+    }
+
+    /**
+     * Get all orders (admin only).
+     */
+    static async getAllOrders({ page = 1, limit = 20, status } = {}) {
+        const offset = (page - 1) * limit;
+        const conditions = ['o.deleted_at IS NULL'];
+        const params = [];
+        let paramIndex = 1;
+
+        if (status) {
+            conditions.push(`o.status = $${paramIndex++}`);
+            params.push(status);
+        }
+
+        const whereClause = conditions.join(' AND ');
+
+        const countResult = await query(
+            `SELECT COUNT(*) FROM orders o WHERE ${whereClause}`, params
+        );
+
+        const result = await query(
+            `SELECT o.*, u.email, u.first_name, u.last_name
+             FROM orders o
+             JOIN users u ON u.id = o.user_id
+             WHERE ${whereClause}
+             ORDER BY o.created_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex++}`,
+            [...params, limit, offset]
+        );
+
+        return {
+            orders: result.rows,
+            pagination: {
+                page, limit,
+                total: Number.parseInt(countResult.rows[0].count, 10),
+                totalPages: Math.ceil(Number.parseInt(countResult.rows[0].count, 10) / limit),
+            },
+        };
+    }
+
+    /**
+     * Get orders containing a vendor's products.
+     */
+    static async getVendorOrders(vendorId, { page = 1, limit = 20 } = {}) {
+        const offset = (page - 1) * limit;
+
+        const countResult = await query(
+            `SELECT COUNT(DISTINCT o.id)
+             FROM orders o
+             JOIN order_items oi ON oi.order_id = o.id
+             JOIN products p ON p.id = oi.product_id
+             WHERE p.vendor_id = $1 AND o.deleted_at IS NULL`,
+            [vendorId]
+        );
+
+        const result = await query(
+            `SELECT DISTINCT o.*, u.email, u.first_name, u.last_name
+             FROM orders o
+             JOIN order_items oi ON oi.order_id = o.id
+             JOIN products p ON p.id = oi.product_id
+             JOIN users u ON u.id = o.user_id
+             WHERE p.vendor_id = $1 AND o.deleted_at IS NULL
+             ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
+            [vendorId, limit, offset]
+        );
+
+        return {
+            orders: result.rows,
+            pagination: {
+                page, limit,
+                total: Number.parseInt(countResult.rows[0].count, 10),
+                totalPages: Math.ceil(Number.parseInt(countResult.rows[0].count, 10) / limit),
+            },
+        };
     }
 }
 

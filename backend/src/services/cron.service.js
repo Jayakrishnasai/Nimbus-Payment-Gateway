@@ -17,7 +17,7 @@ function initCronJobs() {
                 logger.info(`Cron: expired ${result.expired} payments`);
             }
         } catch (error) {
-            logger.error('Cron: expire payments failed', { error: error.message });
+            logger.error('Cron: expire payments failed', { error: error.stack || error });
         }
     });
 

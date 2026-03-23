@@ -5,7 +5,6 @@ const http = require('http');
 const app = require('./src/app');
 const { initWebSocket } = require('./src/websocket/socket');
 const { pool } = require('./src/config/database');
-const redis = require('./src/config/redis');
 const { initCronJobs } = require('./src/services/cron.service');
 const logger = require('./src/utils/logger');
 
@@ -32,13 +31,6 @@ const gracefulShutdown = async (signal) => {
             logger.info('PostgreSQL pool closed');
         } catch (err) {
             logger.error('Error closing PostgreSQL pool', { error: err.message });
-        }
-
-        try {
-            await redis.quit();
-            logger.info('Redis connection closed');
-        } catch (err) {
-            logger.error('Error closing Redis', { error: err.message });
         }
 
         logger.info('Graceful shutdown complete');

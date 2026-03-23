@@ -2,8 +2,33 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, Phone, UserPlus } from 'lucide-react';
+import PropTypes from 'prop-types';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+
+// eslint-disable-next-line react/prop-types
+const Input = ({ icon: Icon, label, value, onChange, type = 'text', required, placeholder }) => (
+    <div>
+        <label className="block text-sm text-surface-200/70 mb-1.5">{label}</label>
+        <div className="relative">
+            <Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-200/30" />
+            <input type={type} required={required} value={value}
+                onChange={onChange}
+                className="w-full pl-12 pr-4 py-3 rounded-xl bg-surface-800/50 border border-surface-700 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-white"
+                placeholder={placeholder} />
+        </div>
+    </div>
+);
+
+Input.propTypes = {
+    icon: PropTypes.elementType.isRequired,
+    label: PropTypes.string.isRequired,
+    value: PropTypes.string.isRequired,
+    onChange: PropTypes.func.isRequired,
+    type: PropTypes.string,
+    required: PropTypes.bool,
+    placeholder: PropTypes.string
+};
 
 export default function Register() {
     const { register, isAuthenticated } = useAuth();
@@ -26,18 +51,7 @@ export default function Register() {
         } finally { setLoading(false); }
     };
 
-    const Input = ({ icon: Icon, label, field, type = 'text', required, placeholder }) => (
-        <div>
-            <label className="block text-sm text-surface-200/70 mb-1.5">{label}</label>
-            <div className="relative">
-                <Icon size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-surface-200/30" />
-                <input type={type} required={required} value={form[field]}
-                    onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl bg-surface-800/50 border border-surface-700 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/20 outline-none transition-all text-white"
-                    placeholder={placeholder} />
-            </div>
-        </div>
-    );
+
 
     return (
         <div className="min-h-[80vh] flex items-center justify-center px-4 py-8">
@@ -53,12 +67,12 @@ export default function Register() {
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <Input icon={User} label="First Name" field="firstName" required placeholder="John" />
-                            <Input icon={User} label="Last Name" field="lastName" required placeholder="Doe" />
+                            <Input icon={User} label="First Name" value={form.firstName} onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))} required placeholder="John" />
+                            <Input icon={User} label="Last Name" value={form.lastName} onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))} required placeholder="Doe" />
                         </div>
-                        <Input icon={Mail} label="Email" field="email" type="email" required placeholder="john@example.com" />
-                        <Input icon={Phone} label="Phone" field="phone" placeholder="+91 98765 43210" />
-                        <Input icon={Lock} label="Password" field="password" type="password" required placeholder="Min 8 characters" />
+                        <Input icon={Mail} label="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" required placeholder="john@example.com" />
+                        <Input icon={Phone} label="Phone" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="+91 98765 43210" />
+                        <Input icon={Lock} label="Password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} type="password" required placeholder="Min 8 characters" />
 
                         <button type="submit" disabled={loading}
                             className="w-full gradient-btn py-3.5 rounded-xl text-lg flex items-center justify-center gap-2 disabled:opacity-50 mt-2">

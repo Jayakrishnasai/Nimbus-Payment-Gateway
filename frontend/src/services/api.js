@@ -5,7 +5,12 @@ const api = axios.create({
     timeout: 15000,
     headers: { 'Content-Type': 'application/json' },
     withCredentials: true,
+    xsrfCookieName: 'XSRF-TOKEN',
+    xsrfHeaderName: 'X-XSRF-TOKEN'
 });
+
+// Initialize CSRF token
+api.get('/auth/csrf-token').catch(() => {});
 
 // Request interceptor — attach token
 api.interceptors.request.use((config) => {
@@ -63,7 +68,8 @@ export const orderAPI = {
 // ── Payments ──
 export const paymentAPI = {
     create: (orderId) => api.post(`/payments/${orderId}`),
-    getStatus: (orderId) => api.get(`/payments/${orderId}/status`),
+    getStatus: (orderId) => api.get(`/payments/${orderId}/verify`),
+    retry: (orderId) => api.post(`/payments/${orderId}/retry`),
 };
 
 export default api;

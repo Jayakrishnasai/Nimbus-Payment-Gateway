@@ -10,8 +10,8 @@ export default function Cart() {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
                 <div className="space-y-4">
-                    {[1, 2, 3].map(i => (
-                        <div key={i} className="glass-card p-6 flex gap-6">
+                    {Array.from({ length: 3 }, (_, i) => `cart-skeleton-${i}`).map(id => (
+                        <div key={id} className="glass-card p-6 flex gap-6">
                             <div className="w-24 h-24 skeleton rounded-xl" />
                             <div className="flex-1 space-y-3">
                                 <div className="h-5 skeleton w-1/2" />
