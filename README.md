@@ -4,7 +4,6 @@
   <img src="https://img.shields.io/badge/React-19-61dafb?style=for-the-badge&logo=react&labelColor=0f172a" alt="React" />
   <img src="https://img.shields.io/badge/Node.js-Express-339933?style=for-the-badge&logo=nodedotjs&labelColor=0f172a" alt="Node.js" />
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&labelColor=0f172a" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Redis-7-DC382D?style=for-the-badge&logo=redis&labelColor=0f172a" alt="Redis" />
   <img src="https://img.shields.io/badge/Terraform-IaC-844FBA?style=for-the-badge&logo=terraform&labelColor=0f172a" alt="Terraform" />
   <img src="https://img.shields.io/badge/Kubernetes-AKS-326CE5?style=for-the-badge&logo=kubernetes&labelColor=0f172a" alt="Kubernetes" />
   <img src="https://img.shields.io/badge/Azure-Cloud-0078D4?style=for-the-badge&logo=microsoftazure&labelColor=0f172a" alt="Azure" />
