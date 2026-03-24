@@ -5,12 +5,13 @@ const { query, getClient } = require('../config/database');
 const Decimal = require('decimal.js');
 const CartService = require('./cart.service');
 const logger = require('../utils/logger');
+const AuditService = require('./audit.service');
 
 class OrderService {
     /**
      * Create a new order from the user's cart.
      */
-    static async createOrder(userId, { shippingAddress, billingAddress, notes, idempotencyKey }) {
+    static async createOrder(userId, { shippingAddress, billingAddress, notes, idempotencyKey }, req = null) {
         // Check idempotency
         if (idempotencyKey) {
             const existing = await query(
@@ -59,7 +60,7 @@ class OrderService {
             const shippingCost = new Decimal(subtotal.gte(999) ? 0 : 99);
             const total = subtotal.plus(tax).plus(shippingCost).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
-            const orderNumber = `NC-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+            const orderNumber = `NC-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
             // Create order
             const orderResult = await client.query(
@@ -95,6 +96,15 @@ class OrderService {
             await client.query('DELETE FROM cart_items WHERE user_id = $1', [userId]);
 
             await client.query('COMMIT');
+
+            await AuditService.log({
+                userId,
+                action: 'ORDER_CREATE',
+                entityType: 'order',
+                entityId: order.id,
+                newValues: order,
+                req
+            });
 
             logger.info('Order created', { orderId: order.id, orderNumber, total: total.toNumber(), userId });
 
@@ -168,7 +178,7 @@ class OrderService {
     /**
      * Update order status.
      */
-    static async updateStatus(orderId, newStatus, userId = null, userRole = null) {
+    static async updateStatus(orderId, newStatus, userId = null, userRole = null, req = null) {
         // Validate status transition
         const VALID_TRANSITIONS = {
             pending: ['confirmed', 'cancelled'],
@@ -213,8 +223,20 @@ class OrderService {
             [orderId, newStatus]
         );
 
+        const newOrder = result.rows[0];
+
+        await AuditService.log({
+            userId,
+            action: 'ORDER_STATUS_UPDATE',
+            entityType: 'order',
+            entityId: orderId,
+            oldValues: { status: order.status },
+            newValues: { status: newStatus },
+            req
+        });
+
         logger.info('Order status updated', { orderId, from: currentStatus, to: newStatus });
-        return result.rows[0];
+        return newOrder;
     }
 
     /**

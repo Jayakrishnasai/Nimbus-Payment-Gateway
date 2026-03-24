@@ -29,12 +29,20 @@ class AuthService {
         const result = await query(
             `INSERT INTO users (email, password_hash, first_name, last_name, phone)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, email, first_name, last_name, phone, role, created_at`,
+       RETURNING id, email, first_name, last_name, phone, created_at`,
             [email.toLowerCase(), passwordHash, firstName, lastName, phone || null]
         );
 
         const user = result.rows[0];
-        const token = AuthService.generateToken(user);
+
+        // Assign default CUSTOMER role
+        const roleResult = await query("SELECT id FROM roles WHERE name = 'CUSTOMER'");
+        if (roleResult.rows.length > 0) {
+            await query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)", [user.id, roleResult.rows[0].id]);
+        }
+
+        const authData = await AuthService.getAuthDetails(user.id);
+        const token = AuthService.generateToken({ ...user, ...authData });
 
         logger.info('User registered', { userId: user.id, email: user.email });
 
@@ -44,7 +52,9 @@ class AuthService {
                 email: user.email,
                 firstName: user.first_name,
                 lastName: user.last_name,
-                role: user.role,
+                roles: authData.roles,
+                permissions: authData.permissions,
+                tenantId: authData.tenantId
             },
             token,
         };
@@ -55,7 +65,7 @@ class AuthService {
      */
     static async login({ email, password }) {
         const result = await query(
-            `SELECT id, email, password_hash, first_name, last_name, role, is_active
+            `SELECT id, email, password_hash, first_name, last_name, is_active, tenant_id
        FROM users WHERE email = $1 AND deleted_at IS NULL`,
             [email.toLowerCase()]
         );
@@ -81,10 +91,8 @@ class AuthService {
             throw error;
         }
 
-        // Update last login
-        await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
-
-        const token = AuthService.generateToken(user);
+        const authData = await AuthService.getAuthDetails(user.id);
+        const token = AuthService.generateToken({ ...user, ...authData });
 
         logger.info('User logged in', { userId: user.id });
 
@@ -94,7 +102,9 @@ class AuthService {
                 email: user.email,
                 firstName: user.first_name,
                 lastName: user.last_name,
-                role: user.role,
+                roles: authData.roles,
+                permissions: authData.permissions,
+                tenantId: authData.tenantId
             },
             token,
         };
@@ -105,7 +115,7 @@ class AuthService {
      */
     static async getProfile(userId) {
         const result = await query(
-            `SELECT id, email, first_name, last_name, phone, role, avatar_url, created_at
+            `SELECT id, email, first_name, last_name, phone, avatar_url, tenant_id, created_at
        FROM users WHERE id = $1 AND deleted_at IS NULL`,
             [userId]
         );
@@ -117,15 +127,62 @@ class AuthService {
         }
 
         const u = result.rows[0];
+        const authData = await AuthService.getAuthDetails(userId);
+
         return {
             id: u.id,
             email: u.email,
             firstName: u.first_name,
             lastName: u.last_name,
             phone: u.phone,
-            role: u.role,
+            roles: authData.roles,
+            permissions: authData.permissions,
+            tenantId: u.tenant_id,
             avatarUrl: u.avatar_url,
             createdAt: u.created_at,
+        };
+    }
+
+    /**
+     * Helper to fetch consolidated roles and permissions.
+     */
+    static async getAuthDetails(userId) {
+        const rolesRes = await query(
+            `SELECT r.name FROM roles r 
+             JOIN user_roles ur ON r.id = ur.role_id 
+             WHERE ur.user_id = $1`,
+            [userId]
+        );
+
+        const permsRes = await query(
+            `SELECT DISTINCT p.name FROM permissions p
+             JOIN role_permissions rp ON p.id = rp.permission_id
+             JOIN user_roles ur ON rp.role_id = ur.role_id
+             WHERE ur.user_id = $1`,
+            [userId]
+        );
+
+        const userRes = await query('SELECT tenant_id, role FROM users WHERE id = $1', [userId]);
+        const user = userRes.rows[0];
+
+        let roles = rolesRes.rows.map(r => r.name);
+        let permissions = permsRes.rows.map(p => p.name);
+
+        // Fallback for legacy users who haven't been migrated to user_roles table yet
+        if (roles.length === 0 && user?.role) {
+            const legacyRole = user.role.toUpperCase();
+            roles = [legacyRole];
+            
+            // Basic hardcoded mapping for the 4 core legacy roles during transition
+            if (legacyRole === 'ADMIN') permissions = ['product:create', 'product:update', 'product:delete', 'order:view_all', 'analytics:view'];
+            else if (legacyRole === 'VENDOR') permissions = ['product:create', 'product:update', 'product:delete', 'order:view_own'];
+            else if (legacyRole === 'CUSTOMER') permissions = ['order:view_own', 'order:create'];
+        }
+
+        return {
+            roles,
+            permissions,
+            tenantId: user?.tenant_id
         };
     }
 
@@ -134,7 +191,13 @@ class AuthService {
      */
     static generateToken(user) {
         return jwt.sign(
-            { id: user.id, email: user.email, role: user.role },
+            { 
+                id: user.id, 
+                email: user.email, 
+                roles: user.roles, 
+                permissions: user.permissions,
+                tenantId: user.tenantId 
+            },
             process.env.JWT_SECRET,
             { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
         );

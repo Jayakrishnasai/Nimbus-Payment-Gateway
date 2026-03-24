@@ -128,6 +128,8 @@ Express app entry point with graceful shutdown, Socket.IO, cron jobs, and all mi
 - **Cart**: add/remove/update items (Redis-cached)
 - **Order**: create order, list orders, order details
 - **Payment**: Native UPI QR (NPCI deep links), bank webhook with HMAC SHA256, manual reconciliation, cron-based expiry
+- **RBAC**: Multi-role system (Admin, Vendor, Customer), action-based permissions, resource ownership (ABAC), and tenant isolation
+- **Audit**: Global AuditService for persistent logging of sensitive CUD (Create, Update, Delete) operations
 - **WebSocket**: Socket.IO for real-time payment status
 
 ---

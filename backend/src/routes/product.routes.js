@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const ProductService = require('../services/product.service');
 const { authenticate } = require('../middleware/auth');
-const { authorize, checkOwnership } = require('../middleware/roles.middleware');
+const { authorize, checkOwnership, checkPermission } = require('../middleware/roles.middleware');
 const { trackEvent } = require('../middleware/metrics.middleware');
 
 const router = Router();
@@ -12,11 +12,15 @@ const router = Router();
 router.get('/', async (req, res, next) => {
     try {
         const { page, limit, category, search, sort, order, featured, vendorId } = req.query;
+        let isFeatured;
+        if (featured === 'true') isFeatured = true;
+        else if (featured === 'false') isFeatured = false;
+
         const result = await ProductService.list({
             page: Number.parseInt(page, 10) || 1,
             limit: Number.parseInt(limit, 10) || 12,
             category, search, sort, order,
-            featured: featured === 'true' ? true : featured === 'false' ? false : undefined,
+            featured: isFeatured,
             vendorId
         });
         res.json(result);
@@ -59,13 +63,13 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // POST /api/products (Admin & Vendor only)
-router.post('/', authenticate, authorize(['admin', 'vendor']), async (req, res, next) => {
+router.post('/', authenticate, checkPermission('product:create'), async (req, res, next) => {
     try {
         const productData = {
             ...req.body,
             vendor_id: req.user.role === 'admin' ? (req.body.vendor_id || req.user.id) : req.user.id
         };
-        const product = await ProductService.create(productData);
+        const product = await ProductService.create(productData, req.user.id, req);
         res.status(201).json(product);
     } catch (error) {
         next(error);
@@ -75,11 +79,11 @@ router.post('/', authenticate, authorize(['admin', 'vendor']), async (req, res, 
 // PUT /api/products/:id (Admin & Owner)
 router.put('/:id', 
     authenticate, 
-    authorize(['admin', 'vendor']), 
+    checkPermission('product:update'), 
     checkOwnership((id) => ProductService.getById(id), (req) => req.params.id),
     async (req, res, next) => {
         try {
-            const product = await ProductService.update(req.params.id, req.body);
+            const product = await ProductService.update(req.params.id, req.body, req.user.id, req);
             res.json(product);
         } catch (error) {
             next(error);
@@ -90,11 +94,11 @@ router.put('/:id',
 // DELETE /api/products/:id (Admin & Owner)
 router.delete('/:id', 
     authenticate, 
-    authorize(['admin', 'vendor']), 
+    checkPermission('product:delete'), 
     checkOwnership((id) => ProductService.getById(id), (req) => req.params.id),
     async (req, res, next) => {
         try {
-            await ProductService.delete(req.params.id);
+            await ProductService.delete(req.params.id, req.user.id, req);
             res.status(204).end();
         } catch (error) {
             next(error);

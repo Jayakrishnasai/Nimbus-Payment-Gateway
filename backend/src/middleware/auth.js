@@ -13,7 +13,7 @@ const authenticate = (req, res, next) => {
 
         // Check Authorization header
         const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
+        if (authHeader?.startsWith('Bearer ')) {
             token = authHeader.split(' ')[1];
         }
 
@@ -30,7 +30,11 @@ const authenticate = (req, res, next) => {
         req.user = {
             id: decoded.id,
             email: decoded.email,
-            role: decoded.role || 'customer',
+            roles: decoded.roles || [],
+            permissions: decoded.permissions || [],
+            tenantId: decoded.tenantId,
+            // Keep role for backward compatibility with simple authorize middleware
+            role: decoded.roles ? decoded.roles[0] : (decoded.role || 'customer'),
         };
 
         next();

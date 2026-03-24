@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import PropTypes from 'prop-types';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { usePermission } from './hooks/usePermission';
 import { CartProvider } from './context/CartContext';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
@@ -14,15 +15,42 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Orders from './pages/Orders';
 
-function ProtectedRoute({ children }) {
+function ProtectedRoute({ children, permission, roles }) {
     const { isAuthenticated, loading } = useAuth();
+    const hasPermission = usePermission(permission, roles);
+
     if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" /></div>;
-    return isAuthenticated ? children : <Navigate to="/login" />;
+    
+    if (!isAuthenticated) return <Navigate to="/login" />;
+    
+    if (permission || roles.length > 0) {
+        if (!hasPermission) return (
+            <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
+                <h2 className="text-3xl font-bold text-white mb-2">Access Denied</h2>
+                <p className="text-surface-200/60 mb-6">You do not have the required permissions to view this page.</p>
+                <Navigate to="/" delay={3000} /> {/* Optional auto-redirect */}
+                <Link to="/" className="text-primary-400 hover:text-primary-300">Return Home</Link>
+            </div>
+        );
+    }
+
+    return children;
 }
 
 ProtectedRoute.propTypes = {
     children: PropTypes.node.isRequired,
+    permission: PropTypes.string,
+    roles: PropTypes.oneOfType([PropTypes.string, PropTypes.arrayOf(PropTypes.string)]),
 };
+
+ProtectedRoute.defaultProps = {
+    permission: null,
+    roles: [],
+};
+
+// Placeholders for demo
+const AdminDashboard = () => <div className="p-8 text-center"><h1 className="text-2xl font-bold">Admin System Control</h1><p>Full system access granted.</p></div>;
+const VendorDashboard = () => <div className="p-8 text-center"><h1 className="text-2xl font-bold">Vendor Merchant Portal</h1><p>Manage your products and orders.</p></div>;
 
 function AppRoutes() {
     return (
@@ -39,6 +67,8 @@ function AppRoutes() {
                     <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
                     <Route path="/payment/:orderId" element={<ProtectedRoute><PaymentStatus /></ProtectedRoute>} />
                     <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+                    <Route path="/admin" element={<ProtectedRoute permission="analytics:view"><AdminDashboard /></ProtectedRoute>} />
+                    <Route path="/vendor/dashboard" element={<ProtectedRoute roles="vendor"><VendorDashboard /></ProtectedRoute>} />
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
             </main>

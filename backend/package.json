@@ -8,7 +8,9 @@
         "dev": "nodemon server.js",
         "test": "jest --coverage --forceExit",
         "lint": "eslint src/ --ext .js",
-        "migrate": "node migrations/run.js"
+        "migrate": "node migrations/run.js",
+        "seed:rbac": "node seed-rbac.mjs",
+        "seed:products": "node seed-user.mjs"
     },
     "dependencies": {
         "bcryptjs": "^2.4.3",

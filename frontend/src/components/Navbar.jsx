@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, LogOut, Menu, X, Package, Search, Heart, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { PermissionGate } from './PermissionGate';
 
 export default function Navbar() {
     const { user, isAuthenticated, logout } = useAuth();
@@ -67,6 +68,10 @@ export default function Navbar() {
                                 className="relative py-8"
                                 onMouseEnter={() => setMegaMenuOpen(true)}
                                 onMouseLeave={() => setMegaMenuOpen(false)}
+                                onFocus={() => setMegaMenuOpen(true)}
+                                onBlur={() => setMegaMenuOpen(false)}
+                                role="group"
+                                aria-label="Shop Menu"
                             >
                                 <button className="text-surface-200 hover:text-white transition-colors text-sm font-bold flex items-center gap-1 outline-none">
                                     Shop <ChevronDown size={14} className={`transition-transform duration-200 ${megaMenuOpen ? 'rotate-180 text-primary-400' : ''}`} />
@@ -138,6 +143,10 @@ export default function Navbar() {
                             className="relative"
                             onMouseEnter={() => setCartHover(true)}
                             onMouseLeave={() => setCartHover(false)}
+                            onFocus={() => setCartHover(true)}
+                            onBlur={() => setCartHover(false)}
+                            role="group"
+                            aria-label="Mini Cart"
                         >
                             <Link to="/cart" className="relative p-2 rounded-xl text-surface-200 hover:bg-surface-800 hover:text-white transition-colors group block">
                                 <ShoppingCart size={20} />
@@ -221,6 +230,26 @@ export default function Navbar() {
                                                 >
                                                     <Package size={16} /> My Orders
                                                 </Link>
+                                                
+                                                <PermissionGate roles={['admin', 'SUPER_ADMIN']} permission="analytics:view">
+                                                    <Link
+                                                        to="/admin"
+                                                        onClick={() => setProfileOpen(false)}
+                                                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-primary-500/10 transition-colors text-sm text-primary-400 font-medium"
+                                                    >
+                                                        <Package size={16} /> Admin Panel
+                                                    </Link>
+                                                </PermissionGate>
+
+                                                <PermissionGate roles="vendor" permission="product:create">
+                                                    <Link
+                                                        to="/vendor/dashboard"
+                                                        onClick={() => setProfileOpen(false)}
+                                                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-accent-500/10 transition-colors text-sm text-accent-400 font-medium"
+                                                    >
+                                                        <Package size={16} /> Vendor Dash
+                                                    </Link>
+                                                </PermissionGate>
                                                 <button
                                                     onClick={() => { setProfileOpen(false); handleLogout(); }}
                                                     className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-rose-500/10 transition-colors text-sm text-rose-400 mt-1 font-medium"

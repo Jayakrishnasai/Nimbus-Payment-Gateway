@@ -3,6 +3,7 @@
 
 const { query } = require('../config/database');
 const logger = require('../utils/logger');
+const AuditService = require('./audit.service');
 
 class ProductService {
     /**
@@ -100,7 +101,7 @@ class ProductService {
     /**
      * Create a new product.
      */
-    static async create(data) {
+    static async create(data, userId, req = null) {
         const slug = data.name.toLowerCase().replaceAll(/[^a-z0-9]+/g, '-').replaceAll(/(^-|-$)/g, '');
         
         const result = await query(
@@ -120,6 +121,15 @@ class ProductService {
             );
         }
 
+        await AuditService.log({
+            userId,
+            action: 'PRODUCT_CREATE',
+            entityType: 'product',
+            entityId: product.id,
+            newValues: product,
+            req
+        });
+
         logger.info('Product created', { productId: product.id, vendorId: data.vendor_id });
         return { ...product, stock: data.stock };
     }
@@ -127,7 +137,8 @@ class ProductService {
     /**
      * Update an existing product.
      */
-    static async update(id, data) {
+    static async update(id, data, userId, req = null) {
+        const oldProduct = await this.getById(id);
         const fields = [];
         const params = [id];
         let paramIndex = 2;
@@ -159,18 +170,41 @@ class ProductService {
             );
         }
 
+        const newProduct = await this.getById(id);
+        
+        await AuditService.log({
+            userId,
+            action: 'PRODUCT_UPDATE',
+            entityType: 'product',
+            entityId: id,
+            oldValues: oldProduct,
+            newValues: newProduct,
+            req
+        });
+
         logger.info('Product updated', { productId: id });
-        return this.getById(id);
+        return newProduct;
     }
 
     /**
      * Soft delete a product.
      */
-    static async delete(id) {
+    static async delete(id, userId, req = null) {
+        const oldProduct = await this.getById(id);
         await query(
             `UPDATE products SET deleted_at = NOW(), is_active = FALSE WHERE id = $1`,
             [id]
         );
+
+        await AuditService.log({
+            userId,
+            action: 'PRODUCT_DELETE',
+            entityType: 'product',
+            entityId: id,
+            oldValues: oldProduct,
+            req
+        });
+
         logger.info('Product deleted', { productId: id });
         return true;
     }

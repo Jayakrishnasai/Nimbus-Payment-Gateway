@@ -1,7 +1,8 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShoppingCart, Minus, Plus, ArrowLeft, Package, Shield, Truck, Star } from 'lucide-react';
+import { ShoppingCart, Minus, Plus, ArrowLeft, Package, Shield, Truck, Star, Edit3, Trash2 } from 'lucide-react';
+import { PermissionGate } from '../components/PermissionGate';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Box, MeshDistortMaterial } from '@react-three/drei';
 import { productAPI } from '../services/api';
@@ -32,7 +33,7 @@ function Product3DViewer() {
 
 export default function ProductDetail() {
     const { id } = useParams();
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     const { addItem } = useCart();
     const [product, setProduct] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -50,7 +51,7 @@ export default function ProductDetail() {
 
     const handleAddToCart = async () => {
         if (!isAuthenticated) {
-            window.location.href = '/login';
+            globalThis.location.href = '/login';
             return;
         }
         setAdding(true);
@@ -130,7 +131,7 @@ export default function ProductDetail() {
                     <div className="flex gap-3 mt-4">
                         <button
                             onClick={() => setShow3D(false)}
-                            className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${!show3D ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' : 'bg-surface-800/50 text-surface-200 border border-surface-700'}`}
+                            className={`flex-1 py-3 rounded-xl text-sm font-medium transition-all ${show3D ? 'bg-surface-800/50 text-surface-200 border border-surface-700' : 'bg-primary-500/20 text-primary-400 border border-primary-500/30'}`}
                         >
                             📷 Photo View
                         </button>
@@ -156,9 +157,33 @@ export default function ProductDetail() {
                         </span>
                     )}
 
-                    <h1 className="text-3xl sm:text-4xl font-display font-bold">
-                        {product.name}
-                    </h1>
+                    <div className="flex items-center justify-between gap-4">
+                        <h1 className="text-3xl sm:text-4xl font-display font-bold">
+                            {product.name}
+                        </h1>
+
+                        <div className="flex gap-2">
+                             <PermissionGate permission="product:update" ownerId={product.vendor_id} roles="admin">
+                                <Link 
+                                    to={`/vendor/products/edit/${product.id}`}
+                                    className="p-2 rounded-lg bg-primary-500/10 text-primary-400 hover:bg-primary-500 hover:text-white transition-all"
+                                    title="Edit Product"
+                                >
+                                    <Edit3 size={20} />
+                                </Link>
+                             </PermissionGate>
+
+                             <PermissionGate permission="product:delete" ownerId={product.vendor_id} roles="admin">
+                                <button 
+                                    className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500 hover:text-white transition-all"
+                                    title="Delete Product"
+                                    onClick={() => { if(globalThis.confirm('Delete this product?')) { /* call delete API */ } }}
+                                >
+                                    <Trash2 size={20} />
+                                </button>
+                             </PermissionGate>
+                        </div>
+                    </div>
 
                     {/* Rating placeholder */}
                     <div className="flex items-center gap-2">
@@ -187,12 +212,33 @@ export default function ProductDetail() {
                     </p>
 
                     {/* Stock */}
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${product.stock > 10 ? 'bg-green-500' : product.stock > 0 ? 'bg-amber-500' : 'bg-red-500'}`} />
-                        <span className={`text-sm ${product.stock > 10 ? 'text-green-400' : product.stock > 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                            {product.stock > 10 ? 'In Stock' : product.stock > 0 ? `Only ${product.stock} left` : 'Out of Stock'}
-                        </span>
-                    </div>
+                    {(() => {
+                        const isOutOfStock = product.stock === 0;
+                        const isLowStock = product.stock > 0 && product.stock <= 10;
+                        
+                        let dotColor = 'bg-green-500';
+                        let textColor = 'text-green-400';
+                        let label = 'In Stock';
+
+                        if (isOutOfStock) {
+                            dotColor = 'bg-red-500';
+                            textColor = 'text-red-400';
+                            label = 'Out of Stock';
+                        } else if (isLowStock) {
+                            dotColor = 'bg-amber-500';
+                            textColor = 'text-amber-400';
+                            label = `Only ${product.stock} left`;
+                        }
+
+                        return (
+                            <div className="flex items-center gap-2">
+                                <div className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
+                                <span className={`text-sm ${textColor}`}>
+                                    {label}
+                                </span>
+                            </div>
+                        );
+                    })()}
 
                     {/* Quantity & Actions */}
                     <div className="flex flex-col sm:flex-row gap-4 pt-4">

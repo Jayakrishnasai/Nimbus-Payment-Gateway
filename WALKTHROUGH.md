@@ -2,7 +2,7 @@
 
 ## Summary
 
-Replaced all Razorpay payment gateway dependencies with a **production-grade native UPI QR payment architecture** using NPCI-compliant deep links, bank webhook verification, and reconciliation fallback.
+Replaced all Razorpay payment gateway dependencies with a **production-grade native UPI QR payment architecture**, and implemented a **fully hardened RBAC system** with granular permissions, resource ownership (ABAC), and persistent audit logging.
 
 ## Files Changed (14 files)
 
@@ -14,7 +14,9 @@ Replaced all Razorpay payment gateway dependencies with a **production-grade nat
 | `backend/src/routes/webhook.routes.js` | Bank webhook with IP whitelist + dev `/simulate` endpoint |
 | `backend/src/routes/payment.routes.js` | Added `POST /:orderId/confirm` for manual "I Have Paid" |
 | `backend/src/services/cron.service.js` | **[NEW]** Expire unpaid payments + cleanup stale carts |
-| `backend/server.js` | Added cron service initialization |
+| `backend/src/middleware/roles.middleware.js` | **[NEW]** RBAC & Ownership (ABAC) enforcement |
+| `backend/src/services/audit.service.js` | **[NEW]** Global audit logging for sensitive actions |
+| `backend/server.js` | Added cron service + audit logging initialization |
 
 ### Configuration
 
@@ -30,7 +32,9 @@ Replaced all Razorpay payment gateway dependencies with a **production-grade nat
 
 | File | Change |
 |------|--------|
-| `backend/migrations/001_initial_schema.sql` | UPI columns (`upi_transaction_ref`, `utr_number`, `upi_deep_link`, `reconciliation_status`) + `bank_transactions` table |
+| `backend/migrations/001_initial_schema.sql` | Base schema + `users`, `products`, `orders`, `audit_logs` |
+| `backend/migrations/005_advanced_rbac.sql` | **[NEW]** RBAC schema: `roles`, `permissions`, `role_permissions`, `user_roles` |
+| `backend/migrations/006_finalize_constraints.sql` | **[NEW]** DB Hardening: Unique product names + inventory constraints |
 | `backend/database/schema.sql` | Matching changes for reference schema |
 
 ### Infrastructure

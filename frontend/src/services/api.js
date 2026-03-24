@@ -10,7 +10,11 @@ const api = axios.create({
 });
 
 // Initialize CSRF token
-api.get('/auth/csrf-token').catch(() => {});
+try {
+    await api.get('/auth/csrf-token');
+} catch {
+    // Ignore initial CSRF failure; it will retry on subsequent requests if needed
+}
 
 // Request interceptor — attach token
 api.interceptors.request.use((config) => {
@@ -28,7 +32,7 @@ api.interceptors.response.use(
         if (error.response?.status === 401) {
             localStorage.removeItem('token');
             localStorage.removeItem('user');
-            window.location.href = '/login';
+            globalThis.location.href = '/login';
         }
         return Promise.reject(error);
     }

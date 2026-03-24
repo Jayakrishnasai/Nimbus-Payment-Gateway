@@ -4,7 +4,7 @@ const { Router } = require('express');
 const { z } = require('zod');
 const OrderService = require('../services/order.service');
 const { authenticate } = require('../middleware/auth');
-const { authorize } = require('../middleware/roles.middleware');
+const { authorize, checkPermission } = require('../middleware/roles.middleware');
 const { validate } = require('../middleware/validate');
 const { trackEvent } = require('../middleware/metrics.middleware');
 
@@ -37,7 +37,7 @@ const createOrderSchema = z.object({
 // POST /api/orders
 router.post('/', validate({ body: createOrderSchema }), async (req, res, next) => {
     try {
-        const order = await OrderService.createOrder(req.user.id, req.body);
+        const order = await OrderService.createOrder(req.user.id, req.body, req);
         
         // track event
         trackEvent({
@@ -69,7 +69,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // GET /api/orders/admin/all (Admin only)
-router.get('/admin/all', authorize(['admin']), async (req, res, next) => {
+router.get('/admin/all', checkPermission('order:view_all'), async (req, res, next) => {
     try {
         const { page, limit, status } = req.query;
         const result = await OrderService.getAllOrders({
@@ -84,7 +84,7 @@ router.get('/admin/all', authorize(['admin']), async (req, res, next) => {
 });
 
 // GET /api/orders/vendor/my (Vendor only)
-router.get('/vendor/my', authorize(['vendor']), async (req, res, next) => {
+router.get('/vendor/my', checkPermission('order:view_own'), async (req, res, next) => {
     try {
         const { page, limit } = req.query;
         const result = await OrderService.getVendorOrders(req.user.id, {
@@ -108,14 +108,18 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // PATCH /api/orders/:id/status (Admin & Vendor)
-router.patch('/:id/status', authorize(['admin', 'vendor']), async (req, res, next) => {
+router.patch('/:id/status', checkPermission('order:update_status'), async (req, res, next) => {
     try {
         const { status } = req.body;
         if (!status) {
             return res.status(400).json({ error: 'Status is required' });
         }
         const order = await OrderService.updateStatus(
-            req.params.id, status, req.user.id, req.user.role
+            req.params.id, 
+            status, 
+            req.user.id, 
+            req.user.role,
+            req
         );
         res.json(order);
     } catch (error) {

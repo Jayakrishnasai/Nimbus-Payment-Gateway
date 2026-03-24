@@ -27,19 +27,20 @@ function buildPoolConfig() {
         };
     }
 
-    // Local / Docker PostgreSQL via individual env vars
-    return {
+    const config = {
         host: process.env.DB_HOST || 'localhost',
         port: Number.parseInt(process.env.DB_PORT, 10) || 5432,
         database: process.env.DB_NAME || 'nimbuscart',
         user: process.env.DB_USER || 'nimbuscart_user',
-        password: process.env.DB_PASSWORD || '',
+        password: String(process.env.DB_PASSWORD || ''),
         min: Number.parseInt(process.env.DB_POOL_MIN, 10) || 2,
         max: Number.parseInt(process.env.DB_POOL_MAX, 10) || 20,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 5000,
         ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     };
+    logger.debug('DB Config', { host: config.host, user: config.user, database: config.database });
+    return config;
 }
 
 const pool = new Pool(buildPoolConfig());
