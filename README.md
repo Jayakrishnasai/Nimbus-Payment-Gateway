@@ -47,23 +47,23 @@
 
 ```mermaid
 graph TD
-    Client[📱 Frontend / Client] -- "1. Request (JWT Cookie/Header)" --> APIGateway[🛡️ Express API Gateway]
+    Client[Frontend / Client] -- "1. Request (JWT Cookie/Header)" --> APIGateway[Express API Gateway]
     
     subgraph "Middleware Layer (Request Life Cycle)"
-        APIGateway --> Auth[🔐 Authentication Middleware]
-        Auth -- "2. Verify JWT & Load Roles/Perms" --> RBAC[🛡️ RBAC / checkPermission Middleware]
-        RBAC -- "3. authorize(requiredPermission)" --> Ownership[👤 checkOwnership ABAC Middleware]
+        APIGateway --> Auth[Authentication Middleware]
+        Auth -- "2. Verify JWT & Load Roles/Perms" --> RBAC[BAC / checkPermission Middleware]
+        RBAC -- "3. authorize(requiredPermission)" --> Ownership[checkOwnership ABAC Middleware]
         Ownership -- "4. Verify Resource Owner / Admin Bypass" --> ServiceLayer
     end
 
     subgraph "Business Logic & Persistence"
-        ServiceLayer[🚀 Service Layer / Service.js] -- "5. Action" --> DB[(🐘 PostgreSQL 16)]
-        ServiceLayer -- "6. log(action, user, diff)" --> AuditService[📜 AuditService]
-        AuditService -- "7. Persist Trail" --> AuditDB[(📜 audit_logs table)]
+        ServiceLayer[Service Layer / Service.js] -- "5. Action" --> DB[(PostgreSQL 16)]
+        ServiceLayer -- "6. log(action, user, diff)" --> AuditService[AuditService]
+        AuditService -- "7. Persist Trail" --> AuditDB[(audit_logs table)]
     end
 
     subgraph "DevOps & Infrastructure"
-        DB -- "8. Migrations / Seeding" --> Scripts[🔨 seed-user.mjs / seed-rbac.mjs]
+        DB -- "8. Migrations / Seeding" --> Scripts[seed-user.mjs / seed-rbac.mjs]
         Scripts -- "9. Idempotent Sync" --> DB
     end
 ```
